@@ -1,0 +1,81 @@
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{textcomp}
+
+\lstdefinelanguage{llvm}{
+  morecomment = [l]{;},
+%   morestring=[b]", 
+  sensitive = true,
+  classoffset=0,
+  morekeywords={
+    declare, global
+    internal, external, 
+    linkonce, linkonce_odr, weak, weak_odr, appending,
+    common, extern_weak,
+    thread_local, dllimport, dllexport,
+    hidden, protected, default,
+    except, deplibs,
+    volatile, fastcc, coldcc, cc, ccc,
+    x86_stdcallcc, x86_fastcallcc,
+    ptx_kernel, ptx_device,
+    signext, zeroext, inreg, sret, nounwind, noreturn,
+    nocapture, byval, nest, readnone, readonly, noalias, uwtable,
+    inlinehint, noinline, alwaysinline, optsize, ssp, sspreq,
+    noredzone, noimplicitfloat, naked, alignstack,
+    module, align, tail,
+    addrspace, section, alias, sideeffect, gc,
+    target, datalayout, triple,
+    blockaddress, unnamed_address
+  },
+  classoffset=1, keywordstyle=\color{black}\bfseries,
+  morekeywords={
+    fadd, sub, fsub, mul, fmul,
+    sdiv, udiv, fdiv, srem, urem, frem,
+    and, or, xor,
+    icmp, fcmp,
+    eq, ne, ugt, uge, ult, ule, sgt, sge, slt, sle,
+    oeq, ogt, oge, olt, ole, one, ord, ueq, ugt, uge,
+    ult, ule, une, uno,
+    nuw, nsw, exact, inbounds,
+    phi, call, select, shl, lshr, ashr, va_arg,
+    trunc, zext, sext,
+    fptrunc, fpext, fptoui, fptosi, uitofp, sitofp,
+    ptrtoint, inttoptr, bitcast, private,
+    ret, br, indirectbr, switch, invoke, unwind, unreachable,
+    malloc, alloca, free, load, store, getelementptr, define, 
+    extractelement, insertelement, shufflevector,
+    extractvalue, insertvalue, constant, to
+  },
+keywords=[2]{i256, i8, i32, void},	% types; money and time units
+	keywordstyle=[2]\color{black},
+  alsoletter={\%, .},
+%   keywordsprefix={\%},
+}
+
+\lstset{
+    inputencoding=utf8,
+	language=llvm,
+    backgroundcolor=\color{black},
+    tabsize=2,
+    upquote=true,
+%    aboveskip={1.5\baselineskip},
+    columns=fixed,
+    showstringspaces=false,
+    extendedchars=true,
+    breaklines=true,
+    % prebreak = \raisebox{0ex}[0ex][0ex]{\ensuremath{\hookleftarrow}},
+    frame=single,
+    showtabs=false,
+    showspaces=false,
+    showstringspaces=false,
+    basicstyle=\scriptsize\ttfamily,
+    identifierstyle=\ttfamily,
+    % keywordstyle=\ttfamily\color[rgb]{0,0,1},
+    % commentstyle=\ttfamily\color[rgb]{0.133,0.545,0.133},
+    % stringstyle=\ttfamily\color[rgb]{0.627,0.126,0.941},
+    keywordstyle=\ttfamily\color{black},
+    commentstyle=\ttfamily\color{black},
+    stringstyle=\ttfamily\color{black},
+    numbersep=2pt,     
+	xleftmargin=2em,
+}

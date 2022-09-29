@@ -1,0 +1,60 @@
+\section{Design}
+In this section, we not only describe the design of  {\tool} but also explain what challenges we need to solve for answering the reasons behind the design choices.  
+
+\subsection{Overview}
+Figure~\ref{fig:overlook} depicts the architecture of the {\tool}, which fuzzes a smart contract in GPU with thousands of threads. 
+%
+The process pipeline consisting of five steps. 
+%
+First, given an evm bytecode, {\translator} translates it into a functional equivalent LLVM assembly, where the external APIs (e.g. SHA3 and storage accesses) are implemented in PTX to avoid CPU.
+%
+Second, {\wrapper} creates a GPU kernel function in LLVM IR to wrap the contract code from {\translator}, for the parallel execution in GPU. The kernel function schedules memory space for thousands of GPU threads, making all threads can execute the same code together. The wrapped LLVM assembly would be translated into a PTX executable as the fuzzing target. 
+%
+In the third step, {\runner} generates various seeds to launch the PTX executable with thousands of threads at the same time. Apart from the extremely high throughput, {\runner} also designs incremental snapshots and coverage-based feedback to explore the smart contract deeper and faster since triggering a vulnerability in smart contracts usually requires several transactions\cite{}. 
+
+\subsection{High Performance Fuzzing}
+
+Throughput indicates the number of seeds can be tested by fuzzers in a time unit. 
+One throughput improvement is running fuzzers in parallel, however, a CPU can only provide limited threads.
+%
+We decide to boost fuzzing by running the smart contract on GPU with thousands of GPU threads. 
+In CPU, we design {\runner} to launch a GPU device and test the smart contracts with a batch of seeds. Once the GPU jobs are finished, {\runner} obtains the coverage information to feedback the seeds generations. 
+
+
+\noindent \textbf{Parallel execution on GPU}
+To improve performance, afl-fuzz uses a "fork server", where the fuzzed process goes through execve(), linking, and libc initialization only once, and is then cloned from a stopped process image by leveraging copy-on-write. The
+\cite{cudaoverhead}
+
+Another approach is enforcing the fuzzing target to initiate itself only once in the first fuzzing round and then clone its initiated process image to execute the remaining seeds from fuzzers. 
+
+
+
+\noindent \textbf{Fuzzing stateful program}
+Although the improvements on feedback may help fuzzers generate more interesting seeds, the throughput would be lower because of the additional computation, which makes fuzzers generate seeds slower. Therefore, there is a trade-off between throughput and feedback algorithm. 
+That is the reason why we design a coverage-based fuzzers rather than using heavy feedback strategies, i.e., symbolic execution\cite{ilf}, XXX. 
+
+\subsection{Functional Equivalent Program Generation}
+
+We have to rewrite the target smart contracts for various purposes, such as 1) generating PTX code to run on GPU, 2) inserting sanitizers to capture crashes, 3) instrumentation for obtain coverage information necessary. 
+To rewrite the code more flexible and precise, we decide to convert the smart contract to LLVM intermediate representation (IR).  
+%
+Broadly speaking, there are two approaches to obtain the llvm assembly of an Ethereum smart contract: 1) Source code compilation by converting Solidity to C++ first and generate IR from clang\cite{}; 2) Binary translation from an EVM bytecode. 
+We choose to use binary translation because blockchain public every single smart contract to encourage nodes to execute and verify them, for satisfying consensus protocol. {\tool} can test the real-world smart contract as it is deployed. 
+We exclude the source code approach because Solidity does not support LLVM and existing Solidity to C++ parser has serious compatibility issues as Solidity grammar updates quite often. 
+
+
+\noindent \textbf{{\translator}}
+We decide to obtain the intermediate representation of the given smart contract to generate a PTX program. 
+EVM bytecode is a sequential of stack-based opcodes, which can be lifted to an LLVM assembly via devirualization and mem2reg\cite{}. For example, we allocate an LLVM array as the EVM stack and thus EVM opcodes can be represented as memory accesses. 
+However, not all opcodes can be fully converted to LLVM IR.
+On the one hand, smart contracts can interactive with blockchain environment with specific opcodes, such as TIMESTAMP for loading the timestamp and NUMBER for obtaining the current block height. Although blockchain client provided restful APIs that we can import to lift the environment opcodes, it requires GPU to wait data from CPU, which sharply decrease the {\tool} throughput.
+%
+On the other hand, smart contract is big endianness rather than the little endianness used in GPU architecture. 
+To make smart contract can run in GPU, we need to simulate the environment opcodes inside GPU and convert the endianness. 
+
+
+\noindent \textbf{{\wrapper}}
+As smart contracts are designed for sequential execution, it is challenging to enforce the lifted IR to handle multi-thread execution scheme. 
+To this end, we extend the generated IR to make sure it can be translated into retargetable code.
+Specifically, we isolate the memory layout of each GPU thread, such as calldata, stack, memory and storage.
+Each thread can access the same address size of GPU memory but with different offset. Once the GPU threads are launched together, they use the same code code but accept different input to get different execution results. In the end, the fuzzer can combined all threads results to decide what seeds should be tested in next round.
