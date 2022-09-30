@@ -15,23 +15,43 @@ In the third step, {\runner} generates various seeds to launch the PTX executabl
 \subsection{High Performance Fuzzing}
 
 Throughput indicates the number of seeds can be tested by fuzzers in a time unit. 
-One throughput improvement is running fuzzers in parallel, however, a CPU can only provide limited threads.
+Although feedback strategies may decrease the throughput because of the additional computation, it can make fuzzers generate more interesting seeds. 
+To benefit from feedback strategies and remain as high as possible throughput, there are two general approaches.
 %
-We decide to boost fuzzing by running the smart contract on GPU with thousands of GPU threads. 
+One throughput improvement is boosting the execution of the fuzzing target. For example, AFL\cite{} enforces the fuzzing target initiate itself only once in the first fuzzing round and then clone its initiated process image to execute the remaining seeds.
+%
+Another approach is running multiply fuzzers in parallel to share a global seeds pool.
+%
+However, on the one hand, the redundant initiation is not the main computational overhead; on the other hand, a CPU can only provide limited threads for parallel execution.
+%
+Since GPU is widely used in parallel execution, we decide to boost fuzzing by running the smart contract on GPU with thousands of GPU threads. 
 In CPU, we design {\runner} to launch a GPU device and test the smart contracts with a batch of seeds. Once the GPU jobs are finished, {\runner} obtains the coverage information to feedback the seeds generations. 
 
 
-\noindent \textbf{Parallel execution on GPU}
-To improve performance, afl-fuzz uses a "fork server", where the fuzzed process goes through execve(), linking, and libc initialization only once, and is then cloned from a stopped process image by leveraging copy-on-write. The
-\cite{cudaoverhead}
+\noindent \textbf{Parallel Execution on GPU}
+Uploaded a kernel function code on GPU, developers can request any threads to execute PTX code in parallel.  
+All threads share a large display memory of GPU with different address space. 
+To make each thread run independently, we allocate
+a seed data and a coverage bitmap for each thread, where the address offset is based on the current thread ID. Each smart contract thread can use its own stack, memory and storage. Therefore, we can test thousands of seeds in parallel. 
+%
+Another benefit of GPU mode is that the initiation and execution phase of PTX is naturally two parts. We can explicitly initiate the kernel function one time and launch it with multiply threads in any times. It would help us to reduce the overhead because of initiation\cite{cudaoverhead}.
 
-Another approach is enforcing the fuzzing target to initiate itself only once in the first fuzzing round and then clone its initiated process image to execute the remaining seeds from fuzzers. 
+
+% an example of data layout
+% threadIdx = grid.x * block.x * thread.idx
+
+% transaction size: why not use compact mode. 
+% Memory Coalescing; Strided Memory Access 
+% https://developer.nvidia.com/blog/how-access-global-memory-efficiently-cuda-c-kernels/
+
+\noindent \textbf{Asynchronous Data Transfer between CPU and GPU}
+GPU and CPU are two independent devices, which means {\runner} can launch the GPU with prepared seeds and continue to analyze the coverage information from the last round without waiting the GPU threads are all finished. 
+By transfer data between CPU and GPU, we can achieve higher throughput. 
 
 
+\noindent \textbf{Fuzzing with Transaction Dependency}
+hook storage
 
-\noindent \textbf{Fuzzing stateful program}
-Although the improvements on feedback may help fuzzers generate more interesting seeds, the throughput would be lower because of the additional computation, which makes fuzzers generate seeds slower. Therefore, there is a trade-off between throughput and feedback algorithm. 
-That is the reason why we design a coverage-based fuzzers rather than using heavy feedback strategies, i.e., symbolic execution\cite{ilf}, XXX. 
 
 \subsection{Functional Equivalent Program Generation}
 
