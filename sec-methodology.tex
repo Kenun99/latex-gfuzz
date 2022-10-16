@@ -2,79 +2,185 @@
 In this section, we not only describe the design of  {\tool} but also explain what challenges we need to solve for answering the reasons behind the design choices.  
 
 \subsection{Overview}
-Figure~\ref{fig:overlook} depicts the architecture of the {\tool}, which fuzzes a smart contract in GPU with thousands of threads. 
+Figure~\ref{fig:overlook} depicts the architecture of the {\tool}, which fuzzes a smart contract in GPU with thousands of threads.  
 %
 The process pipeline consisting of five steps. 
 %
-First, given an evm bytecode, {\translator} translates it into a functional equivalent LLVM assembly, where the external APIs (e.g. SHA3 and storage accesses) are implemented in PTX to avoid CPU.
+First, given an evm bytecode, {\translator} translates it into a functional equivalent LLVM assembly, where the Ethereum APIs (e.g. SHA3 and storage accesses) are implemented in device functions to avoid CPU.
 %
-Second, {\wrapper} creates a GPU kernel function in LLVM IR to wrap the contract code from {\translator}, for the parallel execution in GPU. The kernel function schedules memory space for thousands of GPU threads, making all threads can execute the same code together. The wrapped LLVM assembly would be translated into a PTX executable as the fuzzing target. 
+Second, {\wrapper} creates a GPU kernel function in LLVM IR to wrap the contract code from {\translator}, for the parallel execution in GPU. The kernel function schedules graphic memory for thousands of GPU threads, making all threads can independently execute with different input. The wrapped LLVM assembly would be translated into a PTX executable as the final fuzzing target. 
 %
 In the third step, {\runner} generates various seeds to launch the PTX executable with thousands of threads at the same time. Apart from the extremely high throughput, {\runner} also designs incremental snapshots and coverage-based feedback to explore the smart contract deeper and faster since triggering a vulnerability in smart contracts usually requires several transactions\cite{}. 
 
-\subsection{High Performance Fuzzing}
+\subsection{{\runner}: High Performance Fuzzing}
+Throughput indicates the number of seeds can be tested by fuzzers in a time unit. The execution speed of the target program is the fundamental factor in fuzzing throughput. 
+Unfortunately, smart contract fuzzing suffers from serious throughput bottleneck, because smart contracts are designed to run on a virtual machine rather than a native environment. 
+The blockchain virtual machine sacrifices its performance for the deterministic execution of smart contracts, in order to facilitate blockchain consensus protocols.
+%
+Under such execution layout, the existing smart contract fuzzers has to maintain a virtual machine and a blockchain database to test every single smart contract\cite{}. 
+%
+Although running multiply fuzzers in parallel is one of effective and common-seen solution\cite{confuzzius,echidna,afl,libFuzzer,angora,enfuzz}, where all fuzzing threads share an identical global pool of seeds, the state-of-the-art tools still hit the upper bound due to the limited CPU cores number.
+%
+Therefore, in terms of fundamental aspect, the existing smart contract fuzzers cannot achieve high throughput (See \S~\ref{} for more details).
+%
 
-Throughput indicates the number of seeds can be tested by fuzzers in a time unit. 
-Although feedback strategies may decrease the throughput because of the additional computation, it can make fuzzers generate more interesting seeds. 
-To benefit from feedback strategies and remain as high as possible throughput, there are two general approaches.
+We believe the key of high performance fuzzing is testing a smart contract in as many parallel threads as possible without leveraging blockchain virtual machines. 
+Parallel fuzzing has no concurrency requirement, because all fuzzing threads can test the smart contract independently. The only synchronization event is used to wait for all fuzzing threads end. The more threads we can schedule, the higher throughput the fuzzer can achieve.
+That is the reason why we choose to fuzz smart contracts on GPU. 
+Different from CPU, GPU is full of stream processors, enabling running thousands of jobs in parallel. 
+As far as we know, as one of the most powerful CPU, AMD Ryzen Threadripper PRO 5995WX (\$6,499) only has 64 cores, while a NVIDIA RTX3090 (\$999) can provide 10,496 CUDA cores\footnote{The prices come from the official vendor websites.}. 
+The incredible computation power of GPU is attractive for parallel fuzzing as long as we can translate a smart contracts to GPU executable, i.e., PTX\cite{}. 
 %
-One throughput improvement is boosting the execution of the fuzzing target. For example, AFL\cite{} enforces the fuzzing target initiate itself only once in the first fuzzing round and then clone its initiated process image to execute the remaining seeds.
+In CPU, we design {\runner} to launch a GPU device and fuzz the smart contracts with a batch of seeds. Once the GPU jobs are finished, {\runner} obtains the coverage information to feedback the seeds generations. 
 %
-Another approach is running multiply fuzzers in parallel to share a global seeds pool.
+In this section, we mainly elaborate the design and reasons of the fuzzing strategy that we choose. 
+For example, to handle the transaction dependency, we enable smart contract running on GPU to create and restore snapshot for the storage variables (See \S~\ref{}). 
+These strategies raise functional requirements to the smart contract and they can explain the design choices of the bytecode translation in \S~\ref{}.
+
+% To benefit from feedback strategies and remain as high as possible throughput, there are two general approaches.
 %
-However, on the one hand, the redundant initiation is not the main computational overhead; on the other hand, a CPU can only provide limited threads for parallel execution.
-%
-Since GPU is widely used in parallel execution, we decide to boost fuzzing by running the smart contract on GPU with thousands of GPU threads. 
-In CPU, we design {\runner} to launch a GPU device and test the smart contracts with a batch of seeds. Once the GPU jobs are finished, {\runner} obtains the coverage information to feedback the seeds generations. 
+% One throughput improvement is boosting the execution of the fuzzing target. For example, AFL\cite{} enforces the fuzzing target initiate itself only once in the first fuzzing round and then clone its initiated process image to execute the remaining seeds.
+%However, on the one hand, the redundant initiation is not the main computational overhead; on the other hand, a CPU can only provide limited threads ($<128$) for parallel execution.
 
 
 \noindent \textbf{Parallel Execution on GPU}
-Uploaded a kernel function code on GPU, developers can request any threads to execute PTX code in parallel.  
-All threads share a large display memory of GPU with different address space. 
-To make each thread run independently, we allocate
-a seed data and a coverage bitmap for each thread, where the address offset is based on the current thread ID. Each smart contract thread can use its own stack, memory and storage. Therefore, we can test thousands of seeds in parallel. 
+Given a kernel function code, a GPU can schedule thousands of threads to execute a PTX code. 
 %
-Another benefit of GPU mode is that the initiation and execution phase of PTX is naturally two parts. We can explicitly initiate the kernel function one time and launch it with multiply threads in any times. It would help us to reduce the overhead because of initiation\cite{cudaoverhead}.
-
+Each thread copies the PTX code in its code segment and then extracts different input from CPU to produce different output in parallel. 
+To be specific, each thread is labeled with an auto-increment ID (i.e., thread ID) and run in a specific CUDA core. 
+Since the global memory is visible for all threads, we allocate a sequential memory to maintain all thread input. We pad every seed to 128 bytes so that each thread can compute the address offset of its input using its thread ID. For example, $calldata = p + threadId * 128$, where $calldata$ points to a thread seed. 
+Considering {\tool} is a coverage-based fuzzer, the coverage information recorded in the bitmap should be the output of the executed smart contract. 
+We adopt similar approach to map the bitmap to global memory taking thread ID as the index. 
+In \S~\ref{} we will explain the details of bitmap instrumentation. 
+%
+To make each thread run independently, we ensure each smart contract code to run in a local context. Hence, threads do not have to wait each other.
+%
+% To make each thread run efficiently, we should create a coalescing memory and avoid strike access.
+% Figure~\ref{} shows the data structure of memory layout.
 
 % an example of data layout
 % threadIdx = grid.x * block.x * thread.idx
 
 % transaction size: why not use compact mode. 
-% Memory Coalescing; Strided Memory Access 
+% Our memory model is strided
 % https://developer.nvidia.com/blog/how-access-global-memory-efficiently-cuda-c-kernels/
-
-\noindent \textbf{Asynchronous Data Transfer between CPU and GPU}
-GPU and CPU are two independent devices, which means {\runner} can launch the GPU with prepared seeds and continue to analyze the coverage information from the last round without waiting the GPU threads are all finished. 
-By transfer data between CPU and GPU, we can achieve higher throughput. 
-
+% aligned memory.
 
 \noindent \textbf{Fuzzing with Transaction Dependency}
-hook storage
+Smart contract is a stateful program, which maintain states variables in its storage. Since the state variables can be part of the path constraints, some branches can be explored by fuzzers when smart contract is set as a specific state. 
+%
+As the example shown in Figure~\ref{}, the vulnerability in function $vul()$ can only be triggered when the state variable named $flag$ is set to $``poc"$ via executing $set(``poc")$ first. 
+%
+To explore more branches, existing fuzzing tools decide to generate transaction sequences based on the transaction dependency\cite{confuzzie, echidna}. 
+To be specific, they fix one transaction first and combined it with a following transaction to generate a seed. However, they may execute duplicated transactions when fuzzing with sequence-based seeds. These redundant execution wastes the computational resource, resulting in low throughput. 
+%
+% Not to mention the challenge to recognize transaction sequences. 
+% The existing fuzzers on smart contract find ideal transaction sequences based on the data flow of storage variables, which is still a open question. Storage is a key-value structure. The key of storage variables may be a hash value which is challenging to recognize 
+% However, these approaches did not label which states are interesting but continue to find transactions based on the data flow graph. 
+%
+In order to fulfill the transaction dependency, we design a snapshot strategy to record interesting states of the smart contract. An interesting seed means new coverage is recorded in the bitmap. A program state executed after an interesting seed is an interesting state. 
+Whenever we found an interesting state, we create a storage snapshot representing the program state. 
+The created state snapshots are maintain in the CPU end. 
+In the next fuzzing iteration, {\tool} can restore a selected snapshot to further test the smart contract.
+By switching snapshots, {\tool} can allocate more energy on the interesting state to facilitate the transaction dependency without executing duplicated transactions. Moreover, we can initiate the storage with real-world data to test on-chain smart contract in any stages, hence the found payload can be still effective on mainnet. 
+%
+Since snapshot switches require additional data exchange between CPU and GPU, we must reduce the consumption of graphics memory, enabling {\tool} to conquer the memory latency between CPU and GPU, which is the main bottleneck in CUDA programming. 
+To this end, we further design a Redirect-On-Write storage (See \S~\ref{}) to make the snapshot create and reload operations light and fast.
 
 
-\subsection{Functional Equivalent Program Generation}
+\noindent \textbf{Encoding States Changes into Bitmap}
+Traditional coverage-based fuzzing can only recognize control flow. For example, AFL uses a tuple $(id_{src}, id_{dst}$ to recorded an explored control flow, i.e., an edge from one basic block to another one. Whenever a basic block is executed, AFL increases one bitmap byte in the index of $(id_{src} * 2) \oplus id_{dst}$. 
+% TODO
+To record the side effect of states changes, we extend the bitmap as follow $state_0 \oplus ... \oplus state_n \oplus (id_{src} * 2) \oplus id_{dst}$, where $state_i$ indicates the storage states. 
+Whenever the storage is updated, the bitmap can add one bit to reflect such change. 
+As aforementioned before, the example in Figure~\ref{} has transaction dependency.  
 
-We have to rewrite the target smart contracts for various purposes, such as 1) generating PTX code to run on GPU, 2) inserting sanitizers to capture crashes, 3) instrumentation for obtain coverage information necessary. 
-To rewrite the code more flexible and precise, we decide to convert the smart contract to LLVM intermediate representation (IR).  
+
+
+\begin{figure}[t]
+\begin{algorithm}[H]
+\caption{Storing a storage state into the ROW snapshot.}
+\label{algo:row_sstore}
+\begin{algorithmic}[1]
+    \Require $key$, the storage index; $val$, the storage state
+    \State $Src \gets initial storage states$
+    \State $Snap \gets the storage states snapshot$
+    \If{$key \in \{s.key \mid s \in Snap\}$} 
+        \State $Snap[key].val = val$
+        \State \Return
+    \EndIf
+\end{algorithmic}
+\end{algorithm}
+\end{figure}
+
+
+\noindent \textbf{Asynchronous Fuzzing}
+As far as we know, all traditional coverage-based fuzzers are implemented on CPU in synchronous mode. Each fuzzing iteration consists of three sequence steps, such as seed mutation, target program execution, and coverage bitmap analysis. 
+On the one hand, target program execution cannot run until the seed variant is prepared by the fuzzers. 
+On the other hand, fuzzers have to wait the target program execution ends and then can analyze the coverage information for next round fuzzing iteration. 
+To enhance the throughput performance, {\tool} aims to reduce the time intervals between these three steps.
+Since GPU and CPU are two independent devices, {\runner} can submit fuzzing jobs to GPU and then immediately back to CPU to mutate seeds and analyze the coverage information without waiting the GPU. 
+As the timeline showed in Figure~\ref{}, tr
+
+By transfer data between CPU and GPU, we can achieve higher throughput. 
+%
+
+\begin{figure}[t]
+\centerline{\includegraphics[width=0.5\textwidth]{images/GFL-async_cpy.pdf}}
+\caption{Execution Time Lines}
+\vspace{-0.1in}
+\label{fig:async_cpy}
+\end{figure}
+    
+\subsection{{\translator}: Functional Equivalent Program Generation}
+
+We rewrite the target smart contracts for various purposes, such as 1) generating PTX code to run on GPU, 2) inserting sanitizers to capture crashes, 3) instrumentation for obtain coverage information necessary. 
+To rewrite the code more flexible and precise, we build an IR-based framework based on decide to LLVM intermediate representation.
 %
 Broadly speaking, there are two approaches to obtain the llvm assembly of an Ethereum smart contract: 1) Source code compilation by converting Solidity to C++ first and generate IR from clang\cite{}; 2) Binary translation from an EVM bytecode. 
-We choose to use binary translation because blockchain public every single smart contract to encourage nodes to execute and verify them, for satisfying consensus protocol. {\tool} can test the real-world smart contract as it is deployed. 
-We exclude the source code approach because Solidity does not support LLVM and existing Solidity to C++ parser has serious compatibility issues as Solidity grammar updates quite often. 
+We choose to use binary translation because blockchain public every smart contract and encourage nodes to execute and verify them, for satisfying consensus protocol. {\tool} can test the real-world smart contract as it is deployed. 
+We exclude the source code approach because Solidity does not support LLVM and the existing Solidity to C++ parser has serious compatibility issues as Solidity grammar updates quite often. Moreover, even there exist available source code tools, developers have to recompile the target with flags, which may be opaque for the testing. 
 
 
-\noindent \textbf{{\translator}}
+\noindent \textbf{devirualization}
+%basic block
 We decide to obtain the intermediate representation of the given smart contract to generate a PTX program. 
-EVM bytecode is a sequential of stack-based opcodes, which can be lifted to an LLVM assembly via devirualization and mem2reg\cite{}. For example, we allocate an LLVM array as the EVM stack and thus EVM opcodes can be represented as memory accesses. 
-However, not all opcodes can be fully converted to LLVM IR.
+EVM bytecode is a sequential of stack-based opcodes, which can be lifted to an registers-based LLVM assembly via devirualization and mem2reg\cite{}. 
+We allocate an LLVM array as the EVM stack and thus EVM opcodes can be represented as memory accesses. 
+
+\noindent \textbf{jumps recovery}
+All EVM jumps such as \code{\%JUMP} and \code{\%JUMPI} are indirect jumps, which take the stack top as the jump destination. 
+To recover the control flow of the smart contract bytecode, we lift EVM jumps as table jumps. 
+Since an EVM jump must go to a basic block where the first opcode is \code{JUMPDEST}, we can recover the jump table by 
+
+A table jump decides its jump destination until the GPU runtime when it loads the stack top from the emulated stack and then query
+
+% We allocate an LLVM array as the EVM stack (denoted as \code{\%stk[]}) and thus EVM opcodes can be represented as memory accesses. We use an LLVM register named \code{\%sp} represented as the index of \code{\%stk[]}, which maintains the current stack height. For example, we can load the stack top using \code{\%stk[\%sp]}. By adjusting \code{\%sp}, we can push and pop data from the evm stack. 
+% In general, \code{\%stk[]} consists of 1,024 256-bits elements, following the semantic setting of EVM.
+
+
+\noindent \textbf{Simulating Environment Opcodes}
+Some EVM opcodes are external interfaces of blockchain environment.
 On the one hand, smart contracts can interactive with blockchain environment with specific opcodes, such as TIMESTAMP for loading the timestamp and NUMBER for obtaining the current block height. Although blockchain client provided restful APIs that we can import to lift the environment opcodes, it requires GPU to wait data from CPU, which sharply decrease the {\tool} throughput.
 %
 On the other hand, smart contract is big endianness rather than the little endianness used in GPU architecture. 
 To make smart contract can run in GPU, we need to simulate the environment opcodes inside GPU and convert the endianness. 
+For each kind of environment opcodes, we create a device function:
+\begin{itemize}
+    \item `get' approaches: return constants
+    \item hash function: implement the Java String hashCode() method;
+    \item storage accesses: read and store data from a ROW snapshot (See \S~\ref{});
+    \item load input data: load data from the CPU in little endianness.
+    \item memory operations: read and store data from \code{\%mem} in little endianness.
+\end{itemize}
 
+Note that, each thread only access the local memory to avoid threads synchronization.
 
-\noindent \textbf{{\wrapper}}
-As smart contracts are designed for sequential execution, it is challenging to enforce the lifted IR to handle multi-thread execution scheme. 
-To this end, we extend the generated IR to make sure it can be translated into retargetable code.
-Specifically, we isolate the memory layout of each GPU thread, such as calldata, stack, memory and storage.
-Each thread can access the same address size of GPU memory but with different offset. Once the GPU threads are launched together, they use the same code code but accept different input to get different execution results. In the end, the fuzzer can combined all threads results to decide what seeds should be tested in next round.
+\noindent\textbf{Storage}
+{\tool} can perform snapshot reload and creation operations fast and light. This design is based on our observation that a transaction usually only modified specific storage variables. Therefore, the states of a smart contract share parts the same content. That is the reason why we create a snapshot-based storage. 
+Given an initial storage, we schedule thousands GPU threads to test the state. We store the initial storage in global memory as the source volume, broadcasting its content to every thread. Every thread create a ROW snapshot in its local memory to avoid synchronization. If the seed is interesting, we export the storage snapshot to CPU and combine it with the source volume to build a full storage snapshot.   
+%
+We first initiate a source volume as the initial storage of the smart contract, and then create a Redirect-on-write (ROW) snapshot for each fuzzing thread. The snapshot maintains all storage states of the given smart contract, enabling each GPU thread to use minor memory to record the states changes. 
+Whenever the smart contract stores a state into its storage (i.e., \code{SSTORE}), we save the state in the snapshot. As for the storage loading activities (i.e., \code{SLOAD}), we first enquiry from the snapshot and then the source volume. 
+If the seed is interesting, we export the storage snapshot from GPU to CPU. 
+We can reload a full storage by combined the exported snapshot and the source volume together. The full storage will become the initial storage in next fuzzing iteration.
