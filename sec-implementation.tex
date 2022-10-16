@@ -3,26 +3,111 @@
 In order to evaluate the impact of our design choices, we implement a prototype for {\tool} using approximately 6,000 lines C++ code.
 The prototype implementation will be open source after this paper being accepted.
 
-\subsection{{\translator}}
-
-\subsubsection{Devirtualization}
-We allocate an LLVM array as EVM stack named \code{@custk}.
-Indirect jumps.
-
-\subsubsection{Data layout}
-
 \subsection{{\wrapper}}
 
-\subsubsection{Parallel memory accesses}
- 
+As smart contracts are designed for sequential execution, it is challenging to enforce the lifted IR to handle multi-thread execution scheme. 
+To this end, we extend the generated IR to make sure it can be translated into retargetable code.
+Specifically, we isolate the memory layout of each GPU thread, such as calldata, stack, memory and storage.
+Each thread can access the same address size of GPU memory but with different offset. Once the GPU threads are launched together, they use the same code code but accept different input to get different execution results. In the end, the fuzzer can combined all threads results to decide what seeds should be tested in next round.
 
-\subsubsection{Incremental snapshot}
+As the GPU entry, we create a kernel function named \code{@main} to acquire the input and execution smart contract with a sequence of transactions. 
+As there will be thousands of threads running on GPU together, we need to isolate the execution context of each thread. 
+Figure~\ref{} shows the data layout of the GPU smart contract. $ninput$ and $nbitmap$ are two large consistent memory.
+We allocate a graphic memory as the bitmap for all threads. Each thread is designed to record the coverage information in its bitmap only, i.e., $nbitmap[id*size\to id*size+size]$. 
+Each thread calculate its thread ID via $id = blockIdx.x * blockDim.x + threadIdx.x$. Then it can load its input from the graphic memory, i.e., $ninput[id*width\to id*width+width]$. $width$ is the input size of each thread. 
+Figure~\ref{} indicates the data structure of the thread input, including several transaction data. Each transaction data include the callvalue, calldatasize and calldata. We parse the transaction data to invoke the smart contract, i.e., \code{@contract}. To analyze the transaction sequences effects, we call \code{@contracts} in sequence several times. 
+In \code{@main}, we calculate the memory offset for each thread to access its bitmap and input.
+Therefore, whenever a thread is scheduled, it can only write its local memory. In other words, our GPU jobs are unnecessary to ensure synchronization, which means threads can run faster as they do not have to wait for peer threads. 
+
+% ----------------+----+----------+
+%   calldatasize1 | tx1| ... txn  | ...  
+% ----------------+----+----------+
+% <----------------- thread1 -----><-------- threadn ---->
+
+% ----------------+----------+----------+
+%  bitmap1        | bitmap2  | ...  
+% ----------------+----------+----------+
+% <-- thread1 --->...........<-----threadn ---->
+
+
+\subsection{{\translator}}
+
+\subsubsection{Basic Blocks Construction}
+EVM bytecode is a sequence of opcodes which are organized in several basic blocks connecting in control flow.
+Each EVM basic block must follow the below two rules: 1) starts with \texttt{JUMPDEST}; 2)ends with a terminator such as jump (\texttt{JUMP} and \texttt{JUMPI}) and halt (\texttt{RETURN}, \texttt{STOP}, \texttt{REVERT} and \texttt{SELFDESTRUCT}).
+We label each basic block with the program counter of its head opcode. 
+
+
+\subsubsection{Devirtualization}
+ but also declare several local data for each thread, such as EVM memory, EVM stack and storage. 
+We use a device function named \code{@contract()} to include the smart contract. \code{@contract} is the main entry of the smart contract, which accepts transaction data and runs smart contract code on the local stack, memory and storage. At last, each thread update its bitmap. 
+
+We allocate an LLVM array as EVM stack named \code{@custk} and a stack pointer named \code{@sp}. For each basic block, we extract the used operands but defined outside. For example, \code{@custk[@sp--]} indicates popping an element from stack. 
+Since all jumps in EVM bytecode are indirect. We additionally allocate a variable named \code{@pc}. When we meet a jump like \code{JUMP} or \code{JUMPI}, we set \code{@pc} as the value of stack top. And then perform a table jump, like \code{table jump \%pc, []}, where the tables indicate the entries of all basic blocks.
+
+
+\subsubsection{Environment Opcodes}
+We create native functions for lifting the environment Opcodes. To be specific, we implement these native functions in C++ source code and then compile into library code in LLVM assembly. We elaborate the linkage setting to make the lifted bytecode can link with the library code. 
+
+For contract calls, we lift them to functions calls where each function indicates the logic of a bytecode. 
+For \code{CALLDATALOAD}, we read data from the GPU memory and return in little-endianness. 
+For \code{TIMESTAMP} and other get methods, we return constants for simulation. 
+Base on the above designs, we can ensure the smart contract on GPU has consistent execution results as it run on CPU, in terms of basic functions.
+
+\subsubsection{Use a Incremental Snapshot}
+
+Storage maintain the persistent data of a smart contract, which may result in transaction dependency.
+We simulate a storage inside the GPU for each thread. Since all threads start from the same storage snapshot, we can create snapshot for each thread, for reducing redundant memory. 
+For example, we create a global storage as initial data and then allocate a local storage for each thread. 
+Each local storage is the incremental snapshot of the global storage. Therefore, we can perform ROW storage accesses.
+We store new storage data into the local thread. When loading storage data, we first check whether the local storage exists the data, if no exist, we the search the global storage. If no data is found, we return the default value zero following the EVM semantic. 
+
+\subsubsection{Schedule Incremental Snapshots}
+
+
+
+\begin{figure}[t]
+\begin{algorithm}[H]
+\caption{Loading a storage state from the ROW snapshot.}
+\label{algo:row_sload}
+\begin{algorithmic}[1]
+    \Require $key$, the storage index
+    \State $Src \gets \texttt{initial storage states}$
+    \State $Snap \gets \texttt{the storage states snapshot}$
+    \If{$key \in \{s.key \mid s \in Snap\}$} 
+        \State \Return $Snap[key].val$
+    \Else
+        \If{$key \in \{s.key \mid s \in Src\}$}    
+            \State \Return $Src[key].val$
+        \Else
+            \State \Return 0
+        \EndIf
+    \EndIf
+    % \For{ each: \texttt{$s \in Snap$}}
+    %     \If{$s.key = key$} 
+    %         \State \Return $s.val$
+    %     \EndIf
+    % \EndFor
+\end{algorithmic}
+\end{algorithm}
+\end{figure}
+
 
 \subsection{{\runner}}
 
 \subsubsection{Kernel launch}
+The initiation and execution phase of PTX is naturally two parts. We can explicitly initiate the kernel function one time and launch it with multiply threads in any times. It would help us to reduce the overhead because of initiation\cite{cudaoverhead}.
+
+Once we got the CUDA context, we upload the initial storage data to GPU to bind the global storage. Then we prepare perform asynchronous Data Transfer between CPU and GPU. 
 
 
-\subsubsection{Async data transfer}
+\subsubsection{Snapshot schedule}
+We create a queue to maintain all snapshot. To reload the snapshot, we first get the symbol of the global variable of the source storage used in the GPU thread. Second, we query the memory table to find out the GPU address of the symbol. At last, we can copy the expect storage from CPU to the GPU graphic to initiate the source snapshot. The source snapshot stays in the constant memory, thus it is visible for all GPU threads. 
 
-\subsubsection{Coverage-based feedback}
+Each snapshot only used in local memory to make all threads run independently. To export the storage, we also create a shared memory between CPU and GPU for export the expect storage snapshot. The shared memory have the same size of the storage snapshot. Due to the limited size of the global memory, we cannot declare all storage snapshot in the global memory, but random select one thread to export its snapshot if it executed with a interesting seed.
+% 为什么不直接在global memory声明storage，这样还能全数倒出snapshot
+% => 考虑global memory和local memory的大小，seeds和bitmap等都需要写入到global memory
+
+\subsubsection{Seed Mutation}
+Each smart contract function has an explicit definition recorded in the ABI, which is public to blockchain along with the bytecode.
+For each function argument, we mutate it based on its type. 
