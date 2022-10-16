@@ -120,14 +120,13 @@ On the one hand, target program execution cannot run until the seed variant is p
 On the other hand, fuzzers have to wait the target program execution ends and then can analyze the coverage information for next round fuzzing iteration. 
 To enhance the throughput performance, {\tool} aims to reduce the time intervals between these three steps.
 Since GPU and CPU are two independent devices, {\runner} can submit fuzzing jobs to GPU and then immediately back to CPU to mutate seeds and analyze the coverage information without waiting the GPU. 
-As the timeline showed in Figure~\ref{}, tr
-
-By transfer data between CPU and GPU, we can achieve higher throughput. 
-%
+In Figure~\ref{}, we show the timelines for sequence mode (a) and asynchronous mode (b) in a three times fuzzing. 
+{\tool} creates three stream pipeline to handle the three group of fuzzing jobs in asynchronous mode. 
+In the first time slot, we mutate seed  
 
 \begin{figure}[t]
-\centerline{\includegraphics[width=0.5\textwidth]{images/GFL-async_cpy.pdf}}
-\caption{Execution Time Lines}
+\centerline{\includegraphics[width=0.5\textwidth]{images/GFL-async_cpy.drawio.pdf}}
+\caption{Fuzzing Timelines}
 \vspace{-0.1in}
 \label{fig:async_cpy}
 \end{figure}
