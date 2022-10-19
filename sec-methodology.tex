@@ -13,18 +13,19 @@ Second, {\wrapper} creates a GPU kernel function in LLVM IR to wrap the contract
 In the third step, {\runner} generates various seeds to launch the PTX executable with thousands of threads at the same time. Apart from the extremely high throughput, {\runner} also designs incremental snapshots and coverage-based feedback to explore the smart contract deeper and faster since triggering a vulnerability in smart contracts usually requires several transactions\cite{}. 
 
 \subsection{{\runner}: High Performance Fuzzing}
-Throughput indicates the number of seeds can be tested by fuzzers in a time unit. The execution speed of the target program is the fundamental factor in fuzzing throughput. 
+Throughput indicates the number of seeds can be tested by fuzzers in a time unit. The execution speed of the target program is the fundamental factor in fuzzing throughput\cite{fuzzan_atc}. 
 Unfortunately, smart contract fuzzing suffers from serious throughput bottleneck, because smart contracts are designed to run on a virtual machine rather than a native environment. 
 The blockchain virtual machine sacrifices its performance for the deterministic execution of smart contracts, in order to facilitate blockchain consensus protocols.
 %
-Under such execution layout, the existing smart contract fuzzers has to maintain a virtual machine and a blockchain database to test every single smart contract\cite{}. 
+Under such execution layout, the existing smart contract fuzzers has to maintain a virtual machine and a blockchain database to test every single smart contract. 
 %
-Although running multiply fuzzers in parallel is one of effective and common-seen solution\cite{confuzzius,echidna,afl,libFuzzer,angora,enfuzz}, where all fuzzing threads share an identical global pool of seeds, the state-of-the-art tools still hit the upper bound due to the limited CPU cores number.
+Although running multiply fuzzers in parallel is one of effective and common-seen solution\cite{confuzzius_eurosp,echidna_issta ,afl,angora_sp,enfuzz_sec}, where all fuzzing threads share an identical global pool of seeds, the state-of-the-art tools still hit the upper bound due to the limited CPU cores number.
 %
 Therefore, in terms of fundamental aspect, the existing smart contract fuzzers cannot achieve high throughput (See \S~\ref{} for more details).
 %
 
-We believe the key of high performance fuzzing is testing a smart contract in as many parallel threads as possible without leveraging blockchain virtual machines. 
+We believe the key of high performance fuzzing is testing a smart contract in as many parallel threads as possible without relying on blockchain virtual machines. 
+%
 Parallel fuzzing has no concurrency requirement, because all fuzzing threads can test the smart contract independently. The only synchronization event is used to wait for all fuzzing threads end. The more threads we can schedule, the higher throughput the fuzzer can achieve.
 That is the reason why we choose to fuzz smart contracts on GPU. 
 Different from CPU, GPU is full of stream processors, enabling running thousands of jobs in parallel. 
@@ -67,6 +68,7 @@ To make each thread run independently, we ensure each smart contract code to run
 % aligned memory.
 
 \noindent \textbf{Fuzzing with Transaction Dependency}
+\label{design:snapshot}
 Smart contract is a stateful program, which maintain states variables in its storage. Since the state variables can be part of the path constraints, some branches can be explored by fuzzers when smart contract is set as a specific state. 
 %
 As the example shown in Figure~\ref{}, the vulnerability in function $vul()$ can only be triggered when the state variable named $flag$ is set to $``poc"$ via executing $set(``poc")$ first. 
@@ -114,7 +116,15 @@ As aforementioned before, the example in Figure~\ref{} has transaction dependenc
 \end{figure}
 
 
+\begin{figure}[t]
+\centerline{\includegraphics[width=0.5\textwidth]{images/GFL-async_cpy.drawio.pdf}}
+\caption{Fuzzing Timelines}
+\vspace{-0.1in}
+\label{fig:async_cpy}
+\end{figure}
+
 \noindent \textbf{Asynchronous Fuzzing}
+\label{design:asynchronous}
 As far as we know, all traditional coverage-based fuzzers are implemented on CPU in synchronous mode. Each fuzzing iteration consists of three sequence steps, such as seed mutation, target program execution, and coverage bitmap analysis. 
 On the one hand, target program execution cannot run until the seed variant is prepared by the fuzzers. 
 On the other hand, fuzzers have to wait the target program execution ends and then can analyze the coverage information for next round fuzzing iteration. 
@@ -122,17 +132,15 @@ To enhance the throughput performance, {\tool} aims to reduce the time intervals
 Since GPU and CPU are two independent devices, {\runner} can submit fuzzing jobs to GPU and then immediately back to CPU to mutate seeds and analyze the coverage information without waiting the GPU. 
 In Figure~\ref{}, we show the timelines for sequence mode (a) and asynchronous mode (b) in a three times fuzzing. 
 {\tool} creates three stream pipeline to handle the three group of fuzzing jobs in asynchronous mode. 
-In the first time slot, we mutate seed  
+The jobs in the same stream are highlighted in the same color. 
+In the first time slot, we mutate seed on CPU only. In the next slot, we can run stream \#1 and \#2 together, which launches GPU and mutate seeds, respectively. At last, {\tool} can finish the fuzzing work in five slots, which is less than the traditional methodology (nine slots).
 
-\begin{figure}[t]
-\centerline{\includegraphics[width=0.5\textwidth]{images/GFL-async_cpy.drawio.pdf}}
-\caption{Fuzzing Timelines}
-\vspace{-0.1in}
-\label{fig:async_cpy}
-\end{figure}
+Moreover, asynchronous design enables {\tool} to reduce the overhead of memory latency. \cite{} analyzes the CUDA overhead and finds transferring data between CPU and GPU is time-consuming. {\tool} can invoke another streams when the memory bus of GPU is stuck to one stream job. 
+
+
     
 \subsection{{\translator}: Functional Equivalent Program Generation}
-
+\label{design:translator}
 We rewrite the target smart contracts for various purposes, such as 1) generating PTX code to run on GPU, 2) inserting sanitizers to capture crashes, 3) instrumentation for obtain coverage information necessary. 
 To rewrite the code more flexible and precise, we build an IR-based framework based on decide to LLVM intermediate representation.
 %
@@ -167,7 +175,7 @@ To make smart contract can run in GPU, we need to simulate the environment opcod
 For each kind of environment opcodes, we create a device function:
 \begin{itemize}
     \item `get' approaches: return constants
-    \item hash function: implement the Java String hashCode() method;
+    \item hash function: implement the keccak256  method;
     \item storage accesses: read and store data from a ROW snapshot (See \S~\ref{});
     \item load input data: load data from the CPU in little endianness.
     \item memory operations: read and store data from \code{\%mem} in little endianness.
