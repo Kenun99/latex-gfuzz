@@ -1,13 +1,109 @@
 \section{Introduction}
+% Context of the problem
+Blockchain, as a trustable decentralized network, has been proliferating rapidly over the last few years. 
+In 2014, Ethereum\cite{wood2014ethereum} enables blockchain to run decentralized applications in form of smart contracts, producing deterministic results. %
+Smart contracts have become an indispensable and significant part of the blockchain finance.
+%
+Ethereum is one of the most popular blockchains, in which the number of daily transactions on smart contracts has already exceeded 200 million by October 2022\cite{etherscan}.  
+The execution layout of Ethereum has become a blockchain infrastructure, i.e., Ethereum Virtual Machine (EVM for short).
+From the top10 blockchains in terms of market capacity, six ones are compatible with EVM, in order to foster the prosperity of smart contract based applications\cite{coinmarketcap}.  
+In Ethereum only, there are over one million transactions confirmed in blockchains every day as the records of smart contracts executions\cite{etherscan}.  
 
-The existing fuzzers on smart contract have to run the bytecode in a virtual machine and access the blockchain database to record storage changes. 
+As one kind of executable, EVM smart contracts suffer from security vulnerabilities, which may even cause cryptocurrency loss\cite{ethtract,smartcontractsurvey,defects}. 
+Especially, smart contract bytecode are all exposed to attackers because blockchain publish all smart contracts to peers for verifying deterministic executions.
+Once an attacker sent the exploited transactions, nobody can deny it or retrieve the loss because smart contracts are enforced by the blockchain protocols. Therefore, it is essential for developers to detect the vulnerabilities before the deployment of smart contracts.
 
-Some parallel fuzzers can test the target in several threads. All threads share an identical seed pool\cite{afl, aflfast, enfuzz, }. 
+% Major limitations of existing fuzzers for smart contracts.
+Coverage-based fuzzing is one of the most effective technologies of detecting vulnerabilities\cite{fuzzingsurvey}. 
+It generates specific input (i.e., seeds) to execute the target application.
+Whenever new code branches are explored, the fuzzer engine will give the seed an interesting label and mutate it into variants for the following fuzzing rounds.
+However, there are three critical performance issues.
+%
+The first concern is about smart contract launches. 
+As far as we know, existing fuzzers for smart contracts have to run entire blockchain system, because smart contracts adopt a self-defined instruction set (i.e., EVM opcodes) designed for virtual machines rather than native environment. 
+The overhead of opcode interpretation and consensus protocol prevent existing fuzzers from achieving high throughput. 
+For example, ILF\cite{ilf_ccs}, sfuzz\cite{sfuzz_icse}, Echidna\cite{echidna_issta}, Confuzzius\cite{confuzzius_eurosp} can only hundred times per second, which much slower than the native fuzzers like AFL\cite{afl} (thousands times per second).
+%
+Second, in each fuzzing iteration, state-of-the-art fuzzers execute a transactions sequence to fulfill the requirement of transaction dependency\cite{confuzzius_eurosp}.
+One transaction is executed first to set storage variables so that the following transaction can search deeper. 
+However, in the context of fuzzing, sequence-based seeds may share common prefix transaction.
+A large portion of smart contract executions is repeated but has the same effects because the storage remain the same. 
+%
+Last but not least, existing fuzzers share seeds among fuzzer instances in parallel fuzzing.
+When fuzzer instances found out new seeds, they stop to synchronizing fuzzing jobs to keep the global seeds interesting.
+The additional syncing phase become the third bottleneck in improving fuzzing throughput. 
+
+% Why existing parallel fuzzers or distributed fuzzers cannot solve the problem. (Why applying their ideas to fuzzing smart contract cannot achieve your goal?)
+The execution speed of the target application is the fundamental factor in fuzzing throughput\cite{fuzzan_atc}. 
+Existing parallel fuzzers increase their throughput by using more powerful hardware.
+For example, multi-cores fuzzers include AFL and Libfuzzer run multiply fuzzers instances, but their throughput are limited by the CPU hardware (less than 128 cores).
+To conquer CPU limitation, some distributed fuzzers\cite{distributed_fuzz, disfuzz-afl, wtf} are proposed to run fuzzer instances in different machines. However, the syncing execution will bring more overhead because exchange seeds among different machines are much more expensive.  
+Leveraging expensive hardware to improve fuzzing throughput is not our purpose, hence they they cannot apply our problem.
+% clone by \code{fork()} (i.e., AFL) or create snapshots (i.e., Nyx) for the process target application.
+
+
+% The basic idea of our solution and the novelty.
+In this paper, we propose {\tool}, the first parallel fuzzer to compile smart contracts to GPU executables and then test them on GPU to achieve a millions-level throughput.   
+Given an EVM bytecode, {\tool} first translates it into a functional equivalent PTX code that can run on a GPU. 
+Second, the translated code equips with fuzzing components such as coverage bitmap, storage snapshot and sanitizers. 
+In the third step, the fuzzer in CPU end mutates seeds based on coverage information and schedules thousands of GPU threads to test the rewritten smart contract.
+To facilitate the transaction dependency, {\tool} creates and restores incremental snapshots for switching states of the smart contract. 
+Whenever the sanitizers detected a vulnerability, a signal would be raised to notify the fuzzer to report a crash.
+
+% Challenges to be tackled for realizing our solution. 
+% 1. 首先是correctness issues。由于指令集的不同，我们需要保证转化过的合约能够在GPU正确运行，能和在CPU虚拟机运行时产生相同的结果。而目前并没有这种translator的技术。具体来说需要解决IO， endian，instruction set，memory allocation，environment APIs
+% 2. 其次是如何设计一个高性能fuzzer 来获取来自GPU的测试信息，并进行下一轮的fuzzing
+% 3. 如何满足transaction dependency
+It is non-trivial to develop {\tool} due to the three challenges. 
+\textbf{C1:} 
+It is challenging to design the first cross-ISA compiler for translating an EVM bytecode to a function equivalent PTX without the source code. 
+Apart from lifting the stack-based opcodes into registers-based PTX, we have to handle endianness, memory allocations and blockchain APIs. 
+Especially, blockchain APIs are a set of opcodes which can access blockchain database and use EVM utility, such as invoking another contract, storing persistent data in storage and computing keccak256 hash.
+All components should be implemented in PTX, ensuring GPU to execute the target applications without waiting CPU. 
+In the context of fuzzing, we have to support bitmap instrumentation and sanitizers on GPU.
+%
+\textbf{C2:} 
+GPU does not have any atomic operations to create snapshots for CUDA processes. 
+CPU can leverage Process Context Block (PCB) to represent a process snapshot, but it is infeasible in GPU because no such hardware component is designed on GPU.
+%
+\textbf{C3:} 
+Multi-cores fuzzers have to spend more time on syncing fuzzing instances to exchange interesting seeds, which may even become a throughput bottleneck.
+Taking AFL as an example, the number of seeds selections and executions of the target application increases non-linearly with more cores fuzzing\cite{xu2017designing}. 
+It is critical to reduce the additional syncing phase to improve the fuzzing throughput.
+
+
+% Smart contracts are stateful applications, where the execution results are affected by not only the given seed but also the transactions executed before.
+% By contrast, traditional fuzzers for native code\cite{afl, libfuzzer, angora} are not effective any more because they assume the fuzzing application always produces deterministic execution result no matter what historical input are executed before. 
+
+
+% Solutions to these challenges
+To tackle \textbf{C1} (\S~\ref{design:translator}), we perform devirtualization to translate EVM bytecode into LLVM IR. For example, EVM stack is lifted to an LLVM memory, and the stack operations such as push and pop are represented in memory accesses. Based on the flexible LLVM IR, we allocate graphic memory for CUDA threads, design utility functions to load and read data in little endianness, create GPU native functions to simulate the blockchain APIs, instrument coverage-based bitmap and add IR-based sanitizers. 
+%
+To address \textbf{C2} (\S~\ref{design:snapshot}), we create snapshot for the storage only because transaction dependency is mainly associated with the variables stored in the storage. 
+Each storage snapshot is a byte stream recording the storage variables, hence it can be exported out GPU. 
+Whenever we found an interesting state, we create a storage snapshot representing the program state and export its content to CPU. To restore the snapshot, we initiate the storage content in GPU by copy CPU data to GPU graphic memory.
+%
+To approach \textbf{C3} (\S~\ref{design:asynchronous}), we perform an asynchronous fuzzing because GPU and CPU are two independent devices that can run together. 
+To be specific, {\tool} submit fuzzing jobs to GPU and then immediately back to CPU to mutate seeds and analyze the coverage information without waiting the GPU. 
+
+
+% Summary of experimental results. 
+We implement {\tool} with around 8,000 lines of C++ and conduct extensive experiments to evaluate it. 
+The experimental results demonstrate that {\tool} XXX. 
+We will release {\tool} to the community after paper being publish.
+
 
 
 \noindent\textbf{Our contributions:}
 \begin{itemize}
-    \item ...
-    \item ...
-    \item ...
+    \item We design and develop {\tool}, the first fuzzer to test smart contracts on GPU thousands times per second.
+    Since {\tool} will first generate the EVM bytecode to a smart contract in LLVM IR, it is easy to extend {\tool} to support other fuzzing instrumentation such as gradient decent\cite{angora_sp} and concolic fuzzing\cite{symcc_sec}.
+    \item {\tool} adopt storage snapshot design so that fuzzer can create and restore smart contracts states fast and light. The fuzzing engine is able to test specific states without re-executing transactions as the existing tools did.
+    \item We implement a prototype of {\tool} and conduct extensive experiments to evaluate it by using real-world EVM bytecode and transactions in terms of correctness, throughput, effectiveness and overhead.
+    The experimental results demonstrate that XXX.
 \end{itemize}
+
+
+
+
+ 
