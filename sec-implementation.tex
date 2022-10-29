@@ -95,10 +95,15 @@ We store new storage data into the local thread. When loading storage data, we f
 
 \subsection{{\runner}}
 
-\subsubsection{Kernel launch}
+\subsubsection{Asynchronous Fuzzing}
 The initiation and execution phase of PTX is naturally two parts. We can explicitly initiate the kernel function one time and launch it with multiply threads in any times. It would help us to reduce the overhead because of initiation\cite{cudaoverhead}.
 
 Once we got the CUDA context, we upload the initial storage data to GPU to bind the global storage. Then we prepare perform asynchronous Data Transfer between CPU and GPU. 
+
+In each stream, the index of launched threads starts from zero. To enable threads in all streams can accept multiply input and report all output, we split the input for each stream.
+Each stream uses an offset.
+For example, the threads $i$ in stream $n$ can access $calldata = offset + i * size$, $snap[offset + i]$.
+
 
 
 \subsubsection{Snapshot schedule}

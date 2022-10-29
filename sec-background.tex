@@ -11,3 +11,11 @@ Some opcodes are named blockchain APIs because they can access blockchain databa
 \subsection{CUDA}
 % (TBD)
 CUDA is a parallel computing platform that allows software to use GPUs for general purpose computation. 
+The GPU multiprocessor creates, manages, schedules, and executes threads in SIMT architecture.
+The SIMT architecture is akin to SIMD (Single Instruction, Multiple Data) vector organizations in that a single instruction controls multiple processing elements.
+Whenever a group of threads are executed, they start together at the same code address, but they have their own program counter and register states and are therefore free to branch and execute independently.
+PTX is the instruction set designed for CUDA GPUs.
+The entry point of a PTX application is called kernel function, which can accept data from host and then execute GPU code by invoking devices functions. 
+%
+The key of GPU-based fuzzing is managing data layout to make sure each fuzzing thread can record its coverage information in its own bitmap memory.   
+Fuzzing is an ideal task for GPU because there are no concurrency requirements. All fuzzing iterations can run together without waiting for other workload. 

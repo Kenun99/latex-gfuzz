@@ -1,8 +1,16 @@
 \section{Design}
 In this section, we not only describe the design of  {\tool} but also explain what challenges we need to solve for answering the reasons behind the design choices.  
 
+\begin{figure}[t]
+\centerline{\includegraphics[width=0.5\textwidth]{images/GFL-overview.drawio.pdf}}
+\caption{The overview of {\tool}}
+\vspace{-0.1in}
+\label{fig:overview}
+\end{figure}
+
+
 \subsection{Overview}
-Figure~\ref{fig:overlook} depicts the architecture of the {\tool}, which fuzzes a smart contract in GPU with thousands of threads.  
+Figure~\ref{fig:overview} depicts the architecture of the {\tool}, which fuzzes a smart contract in GPU with thousands of threads.  
 %
 The process pipeline consisting of five steps. 
 %
@@ -137,6 +145,17 @@ In the first time slot, we mutate seed on CPU only. In the next slot, we can run
 
 Moreover, asynchronous design enables {\tool} to reduce the overhead of memory latency. \cite{} analyzes the CUDA overhead and finds transferring data between CPU and GPU is time-consuming. {\tool} can invoke another streams when the memory bus of GPU is stuck to one stream job. 
 
+
+\noindent \textbf{Seeds Mutation}
+\label{design:mutation}
+If a seed is interesting, {\runner} will mutate it into more variants. 
+Each EVM smart contract has three parts of input, including callvalue, calldatasize and calldata. We encode them into one byte stream as a seed. Figure~\ref{} shows the seed structure. 
+In \S~\ref{}, we have leveraged snapshot mechanism to select the tested function of a smart contract. In this part, we mutate the function arguments only. Therefore, we mutate the calldata starting from the fourth byte. 
+As calldata is constructed following the ABI grammar, some sequence of bytes belong to the same function argument. Thus, they should be mutated together.
+To this end, we parse the ABI and then identify the affine types between the raw calldata bytes and high-level function arguments. 
+The mutation strategies inherit from AFL, such as bit fliping, bytes walking and havoc\cite{afl}. 
+When the mutation is end, we compute a new calldatasize for the new calldata. 
+Note that, we assume {\tool} has the owner privilege to test the target application, thus we set a constant as the transaction sender such as \texttt{msg.caller} and \texttt{tx.origin}.
 
     
 \subsection{{\translator}: Functional Equivalent Program Generation}

@@ -33,11 +33,32 @@ Last but not least, existing fuzzers share seeds among fuzzer instances in paral
 When fuzzer instances found out new seeds, they stop to synchronizing fuzzing jobs to keep the global seeds interesting.
 The additional syncing phase become the third bottleneck in improving fuzzing throughput. 
 
+% Please add the following required packages to your document preamble:
+% \usepackage{booktabs}
+% \usepackage{graphicx}
+\begin{table}[]
+\caption{Comparing different fuzzers in terms of source code requirement, snapshot support, Parallel execution and throughput.}
+\label{tab:survey}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}l|cccc@{}}
+\toprule
+Tool                                    & Src Needed & Snapshot   & Cores & Throughput \\ \midrule
+Echidna\cite{echidna_issta}             & \CIRCLE    & \Circle    & 1     & 166 exec/s \\ \midrule
+ConFuzzius\cite{confuzzius_eurosp}      & \Circle    & \Circle    & 10    & -          \\ \midrule
+Contractfuzzer\cite{contractfuzzer_ase} & \Circle    & \Circle    & 1     & 40         \\ \midrule
+ILF\cite{ilf_ccs}                       & \Circle    & \Circle    & 1     & 148 exec/s \\ \midrule
+sfuzz\cite{sfuzz_icse}                  & \Circle    & \Circle    & 1     & 248 exec/s \\ \midrule
+AFL\cite{afl}                           & \Circle    & \Circle    & 30    & 10k exec/s \\ \midrule
+Nyx\cite{nyx_sec}                       & \Circle    & Hypervisor & 40    & 10k exec/s \\ \bottomrule
+\end{tabular}%
+}
+\end{table}
+
 % Why existing parallel fuzzers or distributed fuzzers cannot solve the problem. (Why applying their ideas to fuzzing smart contract cannot achieve your goal?)
 The execution speed of the target application is the fundamental factor in fuzzing throughput\cite{fuzzan_atc}. 
 Existing parallel fuzzers increase their throughput by using more powerful hardware.
 For example, multi-cores fuzzers include AFL and Libfuzzer run multiply fuzzers instances, but their throughput are limited by the CPU hardware (less than 128 cores).
-To conquer CPU limitation, some distributed fuzzers\cite{distributed_fuzz, disfuzz-afl, wtf} are proposed to run fuzzer instances in different machines. However, the syncing execution will bring more overhead because exchange seeds among different machines are much more expensive.  
+To conquer CPU limitation, some distributed fuzzers\cite{clusterfuzz, distributed_fuzz, wtf} are proposed to run fuzzer instances in different machines. However, the syncing execution will bring more overhead because exchange seeds among different machines are much more expensive.  
 Leveraging expensive hardware to improve fuzzing throughput is not our purpose, hence they they cannot apply our problem.
 % clone by \code{fork()} (i.e., AFL) or create snapshots (i.e., Nyx) for the process target application.
 
@@ -77,7 +98,9 @@ It is critical to reduce the additional syncing phase to improve the fuzzing thr
 
 
 % Solutions to these challenges
-To tackle \textbf{C1} (\S~\ref{design:translator}), we perform devirtualization to translate EVM bytecode into LLVM IR. For example, EVM stack is lifted to an LLVM memory, and the stack operations such as push and pop are represented in memory accesses. Based on the flexible LLVM IR, we allocate graphic memory for CUDA threads, design utility functions to load and read data in little endianness, create GPU native functions to simulate the blockchain APIs, instrument coverage-based bitmap and add IR-based sanitizers. 
+To tackle \textbf{C1} (\S~\ref{design:translator}), we perform devirtualization to translate EVM bytecode into LLVM IR. For example, EVM stack is lifted to an LLVM memory, and the stack operations such as push and pop are represented in memory accesses. Based on the flexible LLVM IR, we allocate graphic memory for CUDA threads, design utility functions to load and read data in little endianness, create GPU native functions to simulate the blockchain APIs, instrument coverage-based bitmap and add IR-based sanitizers.
+% eah GPU thread has its own program counter
+% no lockstep, no divergence stack
 %
 To address \textbf{C2} (\S~\ref{design:snapshot}), we create snapshot for the storage only because transaction dependency is mainly associated with the variables stored in the storage. 
 Each storage snapshot is a byte stream recording the storage variables, hence it can be exported out GPU. 

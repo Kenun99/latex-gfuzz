@@ -64,20 +64,22 @@ year = {2022}
 @ARTICLE{fuzzingsurvey,  author={V. Pham and M. Böhme and A. Santosa and A. Căciulescu and A. Roychoudhury},  journal={IEEE Transactions on Software Engineering},   title={Smart Greybox Fuzzing},   year={2021},  volume={47},  number={9},  pages={1980-1997},  doi={10.1109/TSE.2019.2941681}}
 
 
+@inproceedings{contractfuzzer_ase,
+  title={Contractfuzzer: Fuzzing smart contracts for vulnerability detection},
+  author={B. Jiang and Y. Liu and W. Chan},
+  booktitle={2018 33rd IEEE/ACM International Conference on Automated Software Engineering (ASE)},
+  pages={259--269},
+  year={2018},
+  organization={IEEE}
+}
+
+
 @inproceedings{echidna_issta,
-author = {A. Groce and G. Grieco},
-title = {Echidna-Parade: A Tool for Diverse Multicore Smart Contract Fuzzing},
-year = {2021},
-isbn = {9781450384599},
-publisher = {Association for Computing Machinery},
-address = {New York, NY, USA},
-url = {https://doi.org/10.1145/3460319.3469076},
-doi = {10.1145/3460319.3469076},
-booktitle = {Proceedings of the 30th ACM SIGSOFT International Symposium on Software Testing and Analysis},
-pages = {658–661},
-numpages = {4},
-location = {Virtual, Denmark},
-series = {ISSTA 2021}
+  title={Echidna: effective, usable, and fast fuzzing for smart contracts},
+  author={G. Grieco and W. Song and A. Cygan and J. Feist and A. Groce},
+  booktitle={Proceedings of the 29th ACM SIGSOFT International Symposium on Software Testing and Analysis (ISSTA)},
+  pages={557--560},
+  year={2020}
 }
 
 
@@ -129,6 +131,14 @@ publisher = {USENIX Association},
 month = jul,
 }
 
+@inproceedings{nyx_sec,
+  title={Nyx: Greybox hypervisor fuzzing using fast snapshots and affine types},
+  author={Schumilo, Sergej and Aschermann, Cornelius and Abbasi, Ali and W{\"o}rner, Simon and Holz, Thorsten},
+  booktitle={30th USENIX Security Symposium (USENIX Security 21)},
+  pages={2597--2614},
+  year={2021}
+}
+
 @inproceedings{distributed_fuzz,
 author = {Y. Li and C. Feng and C. Tang},
 title = {A Large-Scale Parallel Fuzzing System},
@@ -146,14 +156,14 @@ location = {Chengdu, China},
 series = {ICAIP '18}
 }
 
-@misc{disfuzz-afl,
+@misc{clusterfuzz,
 	date-added = {2022-01-02 16:50:31 +0800},
 	date-modified = {2022-01-02 16:53:54 +0800},
 	month = {May.},
-	author = {M. Bogaard},
-	note = {[Online]. Available: \url{https://github.com/MartijnB/disfuzz-afl}.},
-	title = {Distributed Fuzzing for AFL},
-	year = {2021}}
+	author = {Google},
+	note = {[Online]. Available: \url{https://github.com/google/clusterfuzz/}.},
+	title = {A Distributed Fuzzer Based on OSS-Fuzzer.},
+	year = {2022}}
 
 
 @misc{wtf,
