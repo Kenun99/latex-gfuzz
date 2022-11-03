@@ -11,9 +11,9 @@ In this section, we not only describe the design of  {\tool} but also explain wh
 
 \subsection{Overview}
 Figure~\ref{fig:overview} depicts the architecture of the {\tool}, which tests thousands times of a smart contract together using the GPU SIMD architecture.
-Based on binary translation technology, {\tool} can generate a fuzzing target even if the source code of smart contracts is unavailable.
+Based on binary translation technology, {\tool} can fuzz the smart contract even if its source code is unavailable.
 %
-The process pipeline of {\tool} consists of five steps. 
+To be specific, the process pipeline of {\tool} consists of five steps. 
 %
 First, given an evm bytecode, {\translator} translates it into a functional equivalent LLVM assembly, where the Ethereum APIs (e.g. SHA3 and storage accesses) are implemented in device functions to avoid CPU.
 %
