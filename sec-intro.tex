@@ -77,11 +77,17 @@ Whenever the sanitizers detected a vulnerability, a signal would be raised to no
 % 3. 如何满足transaction dependency
 It is non-trivial to develop {\tool} due to the three challenges. 
 \textbf{C1:} 
-It is challenging to design the first cross-ISA compiler for translating an EVM bytecode to a function equivalent PTX without the source code. 
-Apart from lifting the stack-based opcodes into registers-based PTX, we have to handle endianness, memory allocations and blockchain APIs. 
-Especially, blockchain APIs are a set of opcodes which can access blockchain database and use EVM utility, such as invoking another contract, storing persistent data in storage and computing keccak256 hash.
-All components should be implemented in PTX, ensuring GPU to execute the target applications without waiting CPU. 
-In the context of fuzzing, we have to support bitmap instrumentation and sanitizers on GPU.
+EVM opcodes are virtual machine instructions, which cannot run on PTX-driven GPU. 
+It is challenging to design a cross-ISA compiler for translating an EVM bytecode to a PTX code for parallel fuzzing. 
+The first part is about the function equivalence, including instruction mapping, endianness, memory allocations and blockchain APIs. The PTX smart contract should be a standalone application, ensuring GPU to execute the target applications without waiting CPU. 
+The second part is to enable GPU to exploit instruction-level parallelism and to adopt SIMD (Single Instruction Multiple Data) scheme to further improve the throughput via data parallelization\cite{falk2018vectorized}, since all fuzzing instances are free of locks. 
+
+% Apart from lifting the stack-based opcodes into PTX, we have to handle endianness, memory allocations and blockchain APIs. 
+% Especially, blockchain APIs are a set of opcodes which can access blockchain database and use EVM utility, such as invoking another contract, storing persistent data in storage and computing keccak256 hash.
+% All components should be implemented in PTX, 
+% In the context of fuzzing, we have to support bitmap instrumentation and sanitizers on GPU.
+% The JIT’ed path constraints are usually free of branches, which makes it easier for modern processors
+
 %
 \textbf{C2:} 
 GPU does not have any atomic operations to create snapshots for CUDA processes. 
@@ -91,7 +97,6 @@ CPU can leverage Process Context Block (PCB) to represent a process snapshot, bu
 Multi-cores fuzzers have to spend more time on syncing fuzzing instances to exchange interesting seeds, which may even become a throughput bottleneck.
 Taking AFL as an example, the number of seeds selections and executions of the target application increases non-linearly with more cores fuzzing\cite{xu2017designing}. 
 It is critical to reduce the additional syncing phase to improve the fuzzing throughput.
-
 
 % Smart contracts are stateful applications, where the execution results are affected by not only the given seed but also the transactions executed before.
 % By contrast, traditional fuzzers for native code\cite{afl, libfuzzer, angora} are not effective any more because they assume the fuzzing application always produces deterministic execution result no matter what historical input are executed before. 
