@@ -64,7 +64,7 @@ Leveraging expensive hardware to improve fuzzing throughput is not our purpose, 
 
 
 % The basic idea of our solution and the novelty.
-In this paper, we propose {\tool}, the first parallel fuzzer to compile smart contracts to GPU executables and then test them on GPU to achieve a millions-level throughput.   
+In this paper, we propose {\tool}\footnote{A kind of fecund rabbit, pronounced like py-k\textipa{@}}, the first parallel fuzzer to compile smart contracts to GPU executables and then test them on GPU to achieve a millions-level throughput.   
 Given an EVM bytecode, {\tool} first translates it into a functional equivalent PTX code that can run on a GPU. 
 Second, the translated code equips with fuzzing components such as coverage bitmap, storage snapshot and sanitizers. 
 In the third step, the fuzzer in CPU end mutates seeds based on coverage information and schedules thousands of GPU threads to test the rewritten smart contract.
@@ -80,14 +80,13 @@ It is non-trivial to develop {\tool} due to the three challenges.
 EVM opcodes are virtual machine instructions, which cannot run on PTX-driven GPU. 
 It is challenging to design a cross-ISA compiler for translating an EVM bytecode to a PTX code for parallel fuzzing. 
 The first part is about the function equivalence, including instruction mapping, endianness, memory allocations and blockchain APIs. The PTX smart contract should be a standalone application, ensuring GPU to execute the target applications without waiting CPU. 
-The second part is to enable GPU to exploit instruction-level parallelism and to adopt SIMD (Single Instruction Multiple Data) scheme to further improve the throughput via data parallelization\cite{falk2018vectorized}, since all fuzzing instances are free of locks. 
-
+The second part is to enable GPU to exploit instruction-level parallelism and to adopt SIMD (Single Instruction Multiple Data) scheme to further improve the throughput via data parallelism\cite{falk2018vectorized, cuda2006datapara}, since all fuzzing instances are free of locks. 
+%
 % Apart from lifting the stack-based opcodes into PTX, we have to handle endianness, memory allocations and blockchain APIs. 
 % Especially, blockchain APIs are a set of opcodes which can access blockchain database and use EVM utility, such as invoking another contract, storing persistent data in storage and computing keccak256 hash.
 % All components should be implemented in PTX, 
 % In the context of fuzzing, we have to support bitmap instrumentation and sanitizers on GPU.
 % The JIT’ed path constraints are usually free of branches, which makes it easier for modern processors
-
 %
 \textbf{C2:} 
 GPU does not have any atomic operations to create snapshots for CUDA processes. 

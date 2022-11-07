@@ -10,8 +10,8 @@ Some opcodes are named blockchain APIs because they can access blockchain databa
 
 \subsection{CUDA}
 % (TBD)
-CUDA\cite{nvidia2021cuda} is a parallel computing platform that allows software to use GPUs for general purpose computation. 
-The GPU multiprocessor creates, manages, schedules, and executes threads in SIMD architecture.
+CUDA\cite{nvidia2021cuda} is a parallel computing platform that allows CPU-end programs to use GPUs for general purpose computation. 
+In GPU end, the GPU cores creates, manages, schedules, and executes threads in SIMD architecture.
 The SIMD architecture is akin to SIMD (Single Instruction, Multiple Data) vector organizations in that a single instruction controls multiple processing elements.
 Whenever a group of threads are executed, they start together at the same code address, but they have their own program counter and register states and are therefore free to branch and execute independently.
 PTX is the instruction set designed for CUDA GPUs.
