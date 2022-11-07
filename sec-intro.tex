@@ -64,7 +64,7 @@ Leveraging expensive hardware to improve fuzzing throughput is not our purpose, 
 
 
 % The basic idea of our solution and the novelty.
-In this paper, we propose {\tool}\footnote{A kind of fecund rabbit, pronounced like py-k\textipa{@}}, the first parallel fuzzer to compile smart contracts to GPU executables and then test them on GPU to achieve a millions-level throughput.   
+In this paper, we propose {\tool}\footnote{A kind of fecund rabbit, pronounced like pie-ke.}, the first parallel fuzzer to compile smart contracts to GPU executables and then test them on GPU to achieve a millions-level throughput.   
 Given an EVM bytecode, {\tool} first translates it into a functional equivalent PTX code that can run on a GPU. 
 Second, the translated code equips with fuzzing components such as coverage bitmap, storage snapshot and sanitizers. 
 In the third step, the fuzzer in CPU end mutates seeds based on coverage information and schedules thousands of GPU threads to test the rewritten smart contract.

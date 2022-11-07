@@ -202,7 +202,10 @@ If $b_j$ remains 0xff, {\runner} considers the branch have not yet touched by an
 
 \subsubsection{Seeds Mutation}
 \label{design:mutation}
-If a seed is interesting, {\runner} will mutate it to generate more seeds. 
+We create a sequence of bytes in the GPU memory to maintain the seeds vector for all fuzzing threads, denoted as $S$.  
+$S_{ij}$ indicates the $j$ byte of the seed used by the thread $i$.  
+Each seed is padded to a fix size for threads to access it with a runtime offset.
+If $S_i$ is interesting, {\runner} will mutate it to generate more seeds. 
 Each seed is a byte array, consisting three parts such as \texttt{calldata}, \texttt{calldatasize} and \texttt{callvalue}, representing the input of smart contract, the size of \texttt{calldata} and the amount of cryptocurrency (i.e., Ether), respectvely.  
 %
 The first fourth bytes of \texttt{calldata} represent a function signature, and its following bytes are its function arguments serialized based on the ABI.
@@ -241,13 +244,10 @@ The output of {\translator} is an LLVM assembly, which can be generated into a P
 \subsubsection{SIMD Smart Contract}
 To enable a smart contract run in SIMD mode, the PTX smart contract should be a vectorized code\cite{nuzman2011vapor}. 
 %
-We create a sequence of bytes in the GPU memory to maintain the seeds vector for all fuzzing threads, denoted as $S$.  
-$S_{i,j}$ indicates the $j$ byte of the seed used by the thread $i$.  
-Each seed is padded to a fix size for threads to access it with a runtime offset.
-Since the PTX smart contract uses memory operations to represent the EVM opcodes on EVM memory and EVM stack, we allocate a data vector for each EVM component such as stack and memory in every thread, denoted as $\mu_i$ and $\nu_i$, respectively. 
-Therefore, each individual thread obtain its seed $S_i$ and run its SIMD code to update the expected device memory such as $\mu_i$ and $\nu_i$. For fuzzing, we also reload the storage snapshot $N_i \cup m$ and record the coverage information in the bitmap $B_{i\%32}$. The final output of the threads is the \texttt{virgin\_bits}:
+We use a data vector to represented each EVM component such as stack and memory in every thread, denoted as $\mu_i$ and $\nu_i$, respectively. 
+Therefore, each individual thread obtain its seed $S_i$ and run its SIMD code to update the expected device memory such as $\mu_i$ and $\nu_i$. For fuzzing, we also reload the storage snapshot $N_i \cup m$ and record the coverage information in the \texttt{virgin\_bits}:
 $$
-I \times (N_i \cup m) \times S_i \times (\mu_i, \nu_i) \times B_{i\%32}= b
+I \times (N_i \cup m) \times S_i \times (\mu_i, \nu_i) = b
 $$
 , where $I$ is the SIMD code shared by all threads. 
 Note that, we ignore the output of EVM smart contract because it contributes nothing to bug detection.
