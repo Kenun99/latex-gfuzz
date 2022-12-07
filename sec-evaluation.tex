@@ -1,23 +1,30 @@
 \section{Evaluation}
 
 \subsection{Experiment Environment}
-
+All experiments were performed on a server running Ubuntu 18.04 LTS with dual Intel Xeon Gold 6226R CPUs, 512 GB RAM and one Nvidia RTX3090-24G.
+The CUDA library version is v11.3.
+%
+We ask GPU to run 4,096 streaming multiprocessors (SM). Each SM schedules 32 CUDA cores. 
+%
+For each smart contract, we test XXX minutes. The total experiment costs XXX CPU days. 
 
 \subsection{Correctness}
+\label{rq:correctness}
 
-\subsubsection{Motivation.}
+\subsubsection{Motivation}
 We need to ensure the bytecode transaction is function equivalent. To this end, we collect POC from the Ethereum community and replay on CPU and GPU to compare the storage contents. 
 % evaluate the sanitizers as well.
-\subsubsection{Approach.}
+\subsubsection{Approach}
 
-\subsubsection{Results.}
+\subsubsection{Results}
 
 
 \subsection{Throughput}
+\label{rq:throughput}
 
-\subsubsection{Motivation.}
-We need to ensure the bytecode transaction is function equivalent. To this end, we collect POC from the Ethereum community and replay on CPU and GPU to compare the storage contents. 
+\subsubsection{Motivation}
+Throughput is the fundamental factor of fuzzing tools.
 
-\subsubsection{Approach.}
+\subsubsection{Approach}
 
-\subsubsection{Results.}
+\subsubsection{Results}
