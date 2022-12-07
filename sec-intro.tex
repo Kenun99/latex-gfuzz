@@ -1,16 +1,16 @@
 \section{Introduction}
 % Context of the problem
 Blockchain, as a trustable decentralized network, has been proliferating rapidly over the last few years. 
-In 2014, Ethereum\cite{wood2014ethereum} enables blockchain to run decentralized applications in form of smart contracts, producing deterministic results. %
+In 2014, Ethereum\cite{wood2014ethereum} enabled blockchain to run decentralized applications in the form of smart contracts, producing deterministic results. %
 Smart contracts have become an indispensable and significant part of the blockchain finance.
 %
 Ethereum is one of the most popular blockchains, in which the number of daily transactions on smart contracts has already exceeded 200 million by October 2022\cite{etherscan}.  
 The execution layout of Ethereum has become a blockchain infrastructure, i.e., Ethereum Virtual Machine (EVM for short).
-From the top10 blockchains in terms of market capacity, six ones are compatible with EVM, in order to foster the prosperity of smart contract based applications\cite{coinmarketcap}.  
+From the top10 blockchains in terms of market capacity, six ones are compatible with EVM in order to foster the prosperity of smart contract based applications\cite{coinmarketcap}.  
 In Ethereum only, there are over one million transactions confirmed in blockchains every day as the records of smart contracts executions\cite{etherscan}.  
 
 As one kind of executable, EVM smart contracts suffer from security vulnerabilities, which may even cause cryptocurrency loss\cite{ethtract,smartcontractsurvey,defects}. 
-Especially, smart contract bytecode are all exposed to attackers because blockchain publish all smart contracts to peers for verifying deterministic executions.
+Especially, smart contract bytecode is all exposed to attackers because blockchain publish all smart contracts to peers for verifying deterministic executions.
 Once an attacker sent the exploited transactions, nobody can deny it or retrieve the loss because smart contracts are enforced by the blockchain protocols. Therefore, it is essential for developers to detect the vulnerabilities before the deployment of smart contracts.
 
 % Major limitations of existing fuzzers for smart contracts.
@@ -27,7 +27,7 @@ For example, ILF\cite{ilf_ccs}, sfuzz\cite{sfuzz_icse}, Echidna\cite{echidna_iss
 Second, in each fuzzing iteration, state-of-the-art fuzzers execute a transactions sequence to fulfill the requirement of transaction dependency\cite{confuzzius_eurosp}.
 One transaction is executed first to set storage variables so that the following transaction can search deeper. 
 However, in the context of fuzzing, sequence-based seeds may share common prefix transaction.
-A large portion of smart contract executions is repeated but has the same effects because the storage remain the same. 
+A large portion of smart contract executions is repeated but has the same effects because the storage remains the same. 
 %
 Last but not least, existing fuzzers share seeds among fuzzer instances in parallel fuzzing.
 When fuzzer instances found out new seeds, they stop to synchronizing fuzzing jobs to keep the global seeds interesting.
@@ -36,7 +36,7 @@ The additional syncing phase become the third bottleneck in improving fuzzing th
 % Please add the following required packages to your document preamble:
 % \usepackage{booktabs}
 % \usepackage{graphicx}
-\begin{table}[]
+\begin{table}[t]
 \caption{Comparing different fuzzers in terms of source code requirement, snapshot support, Parallel execution and throughput.}
 \label{tab:survey}
 \resizebox{\columnwidth}{!}{%
@@ -93,9 +93,10 @@ GPU does not have any atomic operations to create snapshots for CUDA processes.
 CPU can leverage Process Context Block (PCB) to represent a process snapshot, but it is infeasible in GPU because no such hardware component is designed on GPU.
 %
 \textbf{C3:} 
-Multi-cores fuzzers have to spend more time on syncing fuzzing instances to exchange interesting seeds, which may even become a throughput bottleneck.
-Taking AFL as an example, the number of seeds selections and executions of the target application increases non-linearly with more cores fuzzing\cite{xu2017designing}. 
-It is critical to reduce the additional syncing phase to improve the fuzzing throughput.
+% Coverage-based fuzzing labels the explored branches in a large array named bitmap. 
+Existing parallel fuzzers\cite{afl, angora_sp} have to allocate an individual array named bitmap to each thread for encoding its coverage information (see \S~\ref{sec:runner:coverage}). 
+The bitmap size should be large enough to reduce hash collision because bitmap is used as a hash mapping for faster accesses by compromising space (e.g., ~10\% of edges are encoded in the same byte of the 64KB AFL bitmap\cite{ding2021hardware}). 
+However, the limited memory on GPU prevents us from running thousands of threads directly.
 
 % Smart contracts are stateful applications, where the execution results are affected by not only the given seed but also the transactions executed before.
 % By contrast, traditional fuzzers for native code\cite{afl, libfuzzer, angora} are not effective any more because they assume the fuzzing application always produces deterministic execution result no matter what historical input are executed before. 
@@ -110,9 +111,11 @@ To address \textbf{C2} (\S~\ref{design:snapshot}), we create snapshot for the st
 Each storage snapshot is a byte stream recording the storage variables, hence it can be exported out GPU. 
 Whenever we found an interesting state, we create a storage snapshot representing the program state and export its content to CPU. To restore the snapshot, we initiate the storage content in GPU by copy CPU data to GPU graphic memory.
 %
-To approach \textbf{C3} (\S~\ref{design:asynchronous}), we perform an asynchronous fuzzing because GPU and CPU are two independent devices that can run together. 
-To be specific, {\tool} submit fuzzing jobs to GPU and then immediately back to CPU to mutate seeds and analyze the coverage information without waiting the GPU. 
-
+To approach \textbf{C3} (\S~\ref{sec:translator:bitmap}), we only allocate bitmaps for the running threads, because GPUs always run and finish a warp of threads (cf. 32 ones) together\cite{nvidia2021cuda}. 
+Based on this hardware feature, whenever a thread finished, we ensure the GPU to wait other threads in the same warp, so that the next warp can clear the 32 bitmaps content and reuse their space again. 
+%
+For a higher throughput, GPUs should not stop to export bitmaps to the CPU.
+Instead, all coverage information should be decoded in the GPU only, e.g., counting the new edges. 
 
 % Summary of experimental results. 
 We implement {\tool} with around 8,000 lines of C++ and conduct extensive experiments to evaluate it. 

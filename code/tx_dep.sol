@@ -1,7 +1,7 @@
 contract Victim {
-  bool public key = true;
-  function unlock() public { key = true; }
-  function vul(uint arg) public returns(uint) { 
-    if(!key) return 0xff + arg; 
+  bool locked = true;
+  function dep(bool _key) public { locked = _key;}
+  function vul(uint _arg) public returns(uint) { 
+    if(!locked) return 0xff - _arg; 
   }
 }
