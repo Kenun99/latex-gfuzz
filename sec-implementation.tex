@@ -104,12 +104,12 @@ We use this technology to implement 1) endianness changes for the abstract memor
 %
 Besides, we also implement the bitmap operations to the runtime functions, such as counting new bits from the bitmap and encoding \texttt{virgin\_bits}.
 
-\begin{figure*}[!ht]
-\centerline{\includegraphics[width=\textwidth]{images/GFL-}}
-\caption{The architecture of incremental snapshots}
+\begin{figure}[!ht]
+\centerline{\includegraphics[width=\columnwidth]{images/GFL-mem_layout.drawio.pdf}}
+\caption{The architecture of incremental snapshots.}
 \vspace{-0.1in}
 \label{fig:snapshot}
-\end{figure*}
+\end{figure}
 
 \subsection{Reload an Incremental Snapshot}
 Once the GPU loads the PTX smart contract via \texttt{cuModuleLoad()}, the global variables will be placed in the data segment. 
